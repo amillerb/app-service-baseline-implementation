@@ -31,6 +31,12 @@ var availabilityZones = [ '1', '2', '3' ]
 var logWorkspaceName = 'log-${baseName}'
 
 
+@description('Specifies the password of the administrator account on the Windows jump box.\n\nComplexity requirements: 3 out of 4 conditions below need to be fulfilled:\n- Has lower characters\n- Has upper characters\n- Has a digit\n- Has a special character\n\nDisallowed values: "abc@123", "P@$$w0rd", "P@ssw0rd", "P@ssword123", "Pa$$word", "pass@word1", "Password!", "Password1", "Password22", "iloveyou!"')
+@secure()
+@minLength(8)
+@maxLength(123)
+param jumpBoxAdminPassword string
+
 // ---- Log Analytics workspace ----
 resource logWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
   name: logWorkspaceName
@@ -104,8 +110,50 @@ module webappModule 'webapp.bicep' = {
     appServicesSubnetName: networkModule.outputs.appServicesSubnetName
     privateEndpointsSubnetName: networkModule.outputs.privateEndpointsSubnetName
     logWorkspaceName: logWorkspace.name
-   }
+   } //depends on to add here
 }
+
+// Deploy Hub VNet
+
+module hubNetworkModule 'hubnetwork.bicep' = {
+  name: 'hubVnetDeploy'
+}
+
+// Deploy TLS Inspection elements for the Azure Firewall
+module tlsModule 'tls.bicep' = {
+  name: 'tlsDeploy'
+  params: {
+    location: location
+    vnetRef: hubNetworkModule.outputs.vnetId
+    keyVaultName: 'kv-${baseName}'
+    remoteAccessPassword: jumpBoxAdminPassword   
+  }
+}
+
+// Deploy Azure Firewall
+
+module firewallModule 'azurefirewall.bicep' = {
+  name: 'firewallDeploy'
+  params: {
+    location: location
+    keyVaultName: 'kv-${baseName}'
+    uaiName: tlsModule.outputs.kvUAIName
+    logAnalyticsWorkspaceName: logWorkspace.name
+  }
+}
+
+
+// Deploy Routes for the Azure Firewall
+
+module routesModule 'routes.bicep' = {
+  name: 'routesDeploy'
+  params: {
+    location: location
+    azfwIP: firewallModule.outputs.azfwPIPAddress
+    fwPrivateIP: firewallModule.outputs.fwPrivateIP
+  }
+}
+
 
 //Deploy an Azure Application Gateway with WAF v2 and a custom domain name.
 module gatewayModule 'gateway.bicep' = {
@@ -124,4 +172,5 @@ module gatewayModule 'gateway.bicep' = {
     logWorkspaceName: logWorkspace.name
    }
 }
+
 
