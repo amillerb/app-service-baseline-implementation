@@ -1,5 +1,5 @@
 @description('The location in which all resources should be deployed.')
-param location string = resourceGroup().location
+param location string = 'northcentralus'
 
 @description('This is the base name for each Azure resource name (6-12 chars)')
 @minLength(6)
@@ -21,7 +21,7 @@ param customDomainName string = 'contoso.com'
 param appGatewayListenerCertificate string
 
 @description('Optional. When true will deploy a cost-optimised environment for development purposes. Note that when this param is true, the deployment is not suitable or recommended for Production environments. Default = false.')
-param developmentEnvironment bool = false
+param developmentEnvironment bool = true
 
 @description('The name of the web deploy file. The file should reside in a deploy container in the storage account. Defaults to SimpleWebApp.zip')
 param publishFileName string = 'SimpleWebApp.zip'
@@ -96,6 +96,55 @@ module secretsModule 'secrets.bicep' = {
   }
 }
 
+// Deploy Hub VNet
+
+module hubNetworkModule 'hubnetwork.bicep' = {
+  name: 'hubVnetDeploy'
+  params: {
+    fwAddressPrefix:'10.1.0.0/26'
+    location: location
+  }
+}
+
+// Deploy TLS Inspection elements for the Azure Firewall
+module tlsModule 'tls.bicep' = {
+  name: 'tlsDeploy'
+  params: {
+    location: location
+    vnetRef: hubNetworkModule.outputs.vnetId
+    peSubnetId: hubNetworkModule.outputs.peSubnetId
+    workloadSubnetId:hubNetworkModule.outputs.workloadSubnetId
+    keyVaultName: 'azfwkv-${baseName}'
+    remoteAccessPassword: jumpBoxAdminPassword  
+    logAnalyticsWorkspaceId:logWorkspace.id
+  }
+}
+
+// Deploy Azure Firewall
+
+module firewallModule 'azurefirewall.bicep' = {
+  name: 'firewallDeploy'
+  params: {
+    location: location
+    keyVaultName: 'azfwkv-${baseName}'
+    uaiName: tlsModule.outputs.kvUAIName
+    logAnalyticsWorkspaceId:logWorkspace.id
+  }
+}
+
+
+// Deploy Routes for the Azure Firewall
+
+module routesModule 'routes.bicep' = {
+  name: 'routesDeploy'
+  params: {
+    location: location
+    fwPrivateIP: firewallModule.outputs.fwPrivateIP
+    azfwPrefix: hubNetworkModule.outputs.azfwPrefix
+  }
+}
+
+
 // Deploy a web app
 module webappModule 'webapp.bicep' = {
   name: 'webappDeploy'
@@ -112,48 +161,6 @@ module webappModule 'webapp.bicep' = {
     logWorkspaceName: logWorkspace.name
    } //depends on to add here
 }
-
-// Deploy Hub VNet
-
-module hubNetworkModule 'hubnetwork.bicep' = {
-  name: 'hubVnetDeploy'
-}
-
-// Deploy TLS Inspection elements for the Azure Firewall
-module tlsModule 'tls.bicep' = {
-  name: 'tlsDeploy'
-  params: {
-    location: location
-    vnetRef: hubNetworkModule.outputs.vnetId
-    keyVaultName: 'kv-${baseName}'
-    remoteAccessPassword: jumpBoxAdminPassword   
-  }
-}
-
-// Deploy Azure Firewall
-
-module firewallModule 'azurefirewall.bicep' = {
-  name: 'firewallDeploy'
-  params: {
-    location: location
-    keyVaultName: 'kv-${baseName}'
-    uaiName: tlsModule.outputs.kvUAIName
-    logAnalyticsWorkspaceName: logWorkspace.name
-  }
-}
-
-
-// Deploy Routes for the Azure Firewall
-
-module routesModule 'routes.bicep' = {
-  name: 'routesDeploy'
-  params: {
-    location: location
-    azfwIP: firewallModule.outputs.azfwPIPAddress
-    fwPrivateIP: firewallModule.outputs.fwPrivateIP
-  }
-}
-
 
 //Deploy an Azure Application Gateway with WAF v2 and a custom domain name.
 module gatewayModule 'gateway.bicep' = {

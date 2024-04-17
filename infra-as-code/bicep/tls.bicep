@@ -1,5 +1,5 @@
 
-param location string = 'EastUS'
+param location string = 'eastus2'
 param keyVaultName string
 // param keyVaultName string = 'azfw-tls-kv-7'
 var uaiName = 'azfw-uai-tls'
@@ -27,7 +27,10 @@ var extensionVersion = '1.0'
 var maaTenantName = 'GuestAttestation'
 
 // Log Analytics Workspaces
-param logAnalyticsWorkspaceName string = '${uniqueString(resourceGroup().id)}la'
+param logAnalyticsWorkspaceId string
+param peSubnetId string
+param workloadSubnetId string
+// resourceId('Microsoft.Network/virtualNetworks/subnets', 'vnet-hub', 'snet-sharedPrivateEndpoints')
 
 
 resource CreateAndDeployCertificates 'Microsoft.Resources/deploymentScripts@2020-10-01' = {
@@ -49,7 +52,9 @@ resource tlsIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-3
   location: location
 }
 
-output kvUAIName string = tlsIdentity.name
+output kvUAIName string = uaiName
+output principalId string = tlsIdentity.properties.principalId
+
 
 resource fwKeyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: keyVaultName
@@ -62,7 +67,7 @@ resource fwKeyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     tenantId: subscription().tenantId
     enableSoftDelete: false
     softDeleteRetentionInDays: 7
-    publicNetworkAccess: 'Disabled'
+    // publicNetworkAccess: 'Disabled'
     accessPolicies: [
       {
         objectId: tlsIdentity.properties.principalId
@@ -109,7 +114,7 @@ resource kvPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = {
     ]
     customNetworkInterfaceName: '${kvPEName}-nic'
     subnet: {
-      id: resourceId('Microsoft.Network/virtualNetworks/subnets', 'vnet-hub', 'snet-sharedPrivateEndpoints')
+      id: peSubnetId
     }
   }
 }
@@ -156,7 +161,7 @@ resource WorkerNIC 'Microsoft.Network/networkInterfaces@2020-07-01' = {
         name: 'WorkerIPConfiguration'
         properties: {
           subnet: {
-            id: resourceId('Microsoft.Network/virtualNetworks/subnets', 'vnet-hub', 'snet-sharedPrivateEndpoints')
+            id: workloadSubnetId
           }
           privateIPAllocationMethod: 'Dynamic'
         }
@@ -279,24 +284,12 @@ resource DemoBastion 'Microsoft.Network/bastionHosts@2020-07-01' = {
   }
 }
 
-
-resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
-  name: logAnalyticsWorkspaceName
-  location: location
-  properties: {
-    sku: {
-      name: 'PerGB2018'
-    }
-    retentionInDays: 30
-  }
-}
-
 //Key Vault diagnostic settings
 resource fwkeyVaultDiagSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: '${fwKeyVault.name}-diagnosticSettings'
   scope: fwKeyVault
   properties: {
-    workspaceId: logAnalyticsWorkspace.id
+    workspaceId: logAnalyticsWorkspaceId
     logs: [
         {
             categoryGroup: 'allLogs'

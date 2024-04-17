@@ -8,9 +8,10 @@ var rtAppGWName = 'udr-appGatewaySubnet'
 var rtAppServicesName = 'udr-appServicesSubnet'
 var rtJumpboxName = 'udr-jumpboxSubnet'
 var rtPEName = 'udr-privateEndpointsSubnet'
-param azfwIP string
 param location string
 param fwPrivateIP string
+param azfwPrefix string
+
 
 module rtAppGW 'br/public:avm/res/network/route-table:0.2.1' = {
   name: rtDeploymentAppGWName
@@ -19,15 +20,15 @@ module rtAppGW 'br/public:avm/res/network/route-table:0.2.1' = {
     location: location
     routes: [
       {
-        name: 'PrivateEndpointsSubnet'
+        name: 'ib-frontend-app-aoaizt'
         properties: {
-          addressPrefix: '10.1.2.0/27'
+          addressPrefix: '10.0.2.14/32' //change to the right IP
           nextHopIpAddress: fwPrivateIP
           nextHopType: 'VirtualAppliance'
         }
       }
     ]
-  }
+  } //appgw subnet association - do in vnet one
 }
 
 module rtAppServices 'br/public:avm/res/network/route-table:0.2.1' = {
@@ -40,12 +41,13 @@ module rtAppServices 'br/public:avm/res/network/route-table:0.2.1' = {
         name: 'default'
         properties: {
           addressPrefix: '0.0.0.0/0'
-          nextHopIpAddress: azfwIP
+          nextHopIpAddress: fwPrivateIP
           nextHopType: 'VirtualAppliance'
         }
       }
     ]
   }
+// app service plan subnet association
 }
 
 module rtJumpbox 'br/public:avm/res/network/route-table:0.2.1' = {
@@ -58,7 +60,7 @@ module rtJumpbox 'br/public:avm/res/network/route-table:0.2.1' = {
         name: 'default'
         properties: {
           addressPrefix: '0.0.0.0/0'
-          nextHopIpAddress: azfwIP
+          nextHopIpAddress: fwPrivateIP
           nextHopType: 'VirtualAppliance'
         }
       }
@@ -76,7 +78,15 @@ module rtPE 'br/public:avm/res/network/route-table:0.2.1' = {
         name: 'default'
         properties: {
           addressPrefix: '0.0.0.0/0'
-          nextHopIpAddress: azfwIP
+          nextHopIpAddress: fwPrivateIP
+          nextHopType: 'VirtualAppliance'
+        }
+      }
+      {
+        name: 'AzureFirewallSubnetRoute'
+        properties: {
+          addressPrefix: azfwPrefix
+          nextHopIpAddress: fwPrivateIP
           nextHopType: 'VirtualAppliance'
         }
       }

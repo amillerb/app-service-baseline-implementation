@@ -1,6 +1,6 @@
 // Azure Firewall 
 var azfwName = 'azfw-hub'
-var azfwPolicyName = 'azfw-hub-policy'
+var azfwPolicyName = 'azfw-hub-policy-test'
 param location string
 var appGWRuleName = 'azfw-ip-group-app-gwsnet'
 var appRulesName = 'snet-appGateway-to-frontend-app-aoaizt'
@@ -31,7 +31,7 @@ var appOBRuleCollectionName = 'ob-app-rc-appaoaizt'
 param uaiName string
 var keyVaultCASecretName = 'CACert'
 param keyVaultName string
-param logAnalyticsWorkspaceName string
+param logAnalyticsWorkspaceId string
 
 // Key Vault & Identity reference for TLS
 
@@ -46,12 +46,6 @@ resource tlsIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-3
 resource kvSecretCert 'Microsoft.KeyVault/vaults/secrets@2019-09-01' existing = {
   parent: fwKeyVault
   name: keyVaultCASecretName
-}
-
-// LA Workspace reference
-
-resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
-  name: logAnalyticsWorkspaceName
 }
 
 // IP Groups
@@ -99,8 +93,6 @@ module ipGroupJumpBox 'br/public:avm/res/network/ip-group:0.1.0' = {
     location: location
   }
 }
-
-
 
 // Firewall Policy
 module firewallPolicy 'br/public:avm/res/network/firewall-policy:0.1.2' = {
@@ -182,7 +174,7 @@ module firewallPolicy 'br/public:avm/res/network/firewall-policy:0.1.2' = {
     managedIdentities:{
       userAssignedResourceIds: [tlsIdentity.id]
     }
-    defaultWorkspaceId: logAnalyticsWorkspace.id
+    defaultWorkspaceId: logAnalyticsWorkspaceId
    }
   }
 
@@ -195,8 +187,6 @@ module azfwPIP 'br/public:avm/res/network/public-ip-address:0.3.1' = {
     location: location
   }
 }
-
-output azfwPIPAddress string = azfwPIP.outputs.ipAddress
 
 // Azure Firewall
 resource azureFirewall 'Microsoft.Network/azureFirewalls@2023-04-01' = {
@@ -229,14 +219,14 @@ resource azureFirewall 'Microsoft.Network/azureFirewalls@2023-04-01' = {
       ]
   }
 
-output fwPrivateIP string = azureFirewall.properties.ipConfigurations[0].properties.privateIPAddress
+
 
 //Firewall diagnostic settings
 resource fwDiagSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: '${azureFirewall.name}-diagnosticSettings'
   scope: azureFirewall
   properties: {
-    workspaceId: logAnalyticsWorkspace.id
+    workspaceId: logAnalyticsWorkspaceId
     logs: [
         {
             categoryGroup: 'allLogs'
@@ -249,3 +239,6 @@ resource fwDiagSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-previe
     ]
   }
 }
+
+output fwPrivateIP string = azureFirewall.properties.ipConfigurations[0].properties.privateIPAddress
+output azfwPIPAddress string = azfwPIP.outputs.ipAddress
