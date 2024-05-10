@@ -1,10 +1,37 @@
 var vnetDeploymentName = 'vnet-hub-deployment'
 var vnetName = 'vnet-hub'
 var privateEndpointsSubnetName = 'snet-sharedPrivateEndpoints'
-var workerSubnetName = 'snet-workload'
-param location string
-param fwAddressPrefix string = '10.1.0.0/26'
 
+var nsgDeploymentName = 'sharedPE-nsg-hub-deployment'
+var rtDeploymentPEName = 'udr-sharedPrivateEndpoints-deployment'
+
+var rtSharedPEName = 'udr-sharedPrivateEndpoints'
+var nsgSharedPrivateEndpointsName = 'nsg-sharedPrivateEndpointsSubnet'
+
+
+param location string
+param fwPrivateIP string = '10.1.1.4'
+param fwAddressPrefix string = '10.1.1.0/26'
+
+
+module rtSharedPE 'br/public:avm/res/network/route-table:0.2.1' = {
+  name: rtDeploymentPEName
+  params: {
+    name: rtSharedPEName
+    location: location
+    routes: [
+      {
+        name: 'default'
+        properties: {
+          addressPrefix: '0.0.0.0/0'
+          nextHopIpAddress: fwPrivateIP
+          nextHopType: 'VirtualAppliance'
+        }
+      }
+    ]
+  }
+}
+output rtId string = rtSharedPE.outputs.resourceId
 
 module hubvnet 'br/public:avm/res/network/virtual-network:0.1.1' = {
   name: vnetDeploymentName
@@ -12,7 +39,7 @@ module hubvnet 'br/public:avm/res/network/virtual-network:0.1.1' = {
     name: vnetName
     location: location
     addressPrefixes: [
-      '10.1.0.0/23'
+      '10.1.0.0/16'
     ]
     subnets: [
       {
@@ -21,28 +48,24 @@ module hubvnet 'br/public:avm/res/network/virtual-network:0.1.1' = {
       }
       {
         name: privateEndpointsSubnetName
-        addressPrefix: '10.1.0.64/26'
-      }
-      {
-        name: 'AzureBastionSubnet'
-        addressPrefix: '10.1.0.128/26'
-      }
-      {
-        name: workerSubnetName
-        addressPrefix: '10.1.1.0/26'
+        addressPrefix: '10.1.2.0/24'
+        routeTableResourceId: rtSharedPE.outputs.resourceId
+        networkSecurityGroupResourceId: nsgSharedPrivateEndpoints.outputs.resourceId
       }
     ]
   }
 }
 
 
+module nsgSharedPrivateEndpoints 'br/public:avm/res/network/network-security-group:0.1.2' = {
+  name: nsgDeploymentName
+  params: {
+    name: nsgSharedPrivateEndpointsName
+    location: location
+  }
+}
+
+
 output vnetId string =  resourceId('Microsoft.Network/virtualNetworks', 'vnet-hub')
 output peSubnetId string = resourceId('Microsoft.Network/VirtualNetworks/subnets', 'vnet-hub', '${privateEndpointsSubnetName}')
-output workloadSubnetId string = resourceId('Microsoft.Network/VirtualNetworks/subnets', 'vnet-hub', '${workerSubnetName}')
 output azfwPrefix string = fwAddressPrefix
-
-// output vnetId string = hubvnet.outputs.resourceId
-// output peSubnetId string = hubvnet.outputs.subnetResourceIds[1]
-// output workloadSubnetId string = hubvnet.outputs.subnetResourceIds[3]
-// output azfwPrefix string = fwAddressPrefix
-
