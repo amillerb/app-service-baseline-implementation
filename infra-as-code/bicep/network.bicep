@@ -19,6 +19,8 @@ var appGatewaySubnetPrefix = '10.0.1.0/24'
 var appServicesSubnetPrefix = '10.0.0.0/24'
 var privateEndpointsSubnetPrefix = '10.0.2.0/27'
 var agentsSubnetPrefix = '10.0.2.32/27'
+var azureFirewallSubnetPrefix = '10.1.1.0/26'
+
 
 //Temp disable DDoS protection
 var enableDdosProtection = !developmentEnvironment
@@ -148,62 +150,7 @@ resource appGatewaySubnetNsg 'Microsoft.Network/networkSecurityGroups@2022-11-01
           priority: 110
           direction: 'Inbound'
         }
-      }
-      {
-        name: 'AppGw.In.Allow.LoadBalancer'
-        properties: {
-          description: 'Allow inbound traffic from azure load balancer'
-          protocol: '*'
-          sourcePortRange: '*'
-          destinationPortRange: '*'
-          sourceAddressPrefix: 'AzureLoadBalancer'
-          destinationAddressPrefix: '*'
-          access: 'Allow'
-          priority: 120
-          direction: 'Inbound'
-        }
-      }      
-      {
-        name: 'DenyAllInBound'
-        properties: {
-          protocol: '*'
-          sourcePortRange: '*'
-          sourceAddressPrefix: '*'
-          destinationPortRange: '*'
-          destinationAddressPrefix: '*'
-          access: 'Deny'
-          priority: 1000
-          direction: 'Inbound'
-        }
       }  
-      {
-        name: 'AppGw.Out.Allow.PrivateEndpoints'
-        properties: {
-          description: 'Allow outbound traffic from the App Gateway subnet to the Private Endpoints subnet.'
-          protocol: '*'
-          sourcePortRange: '*'
-          destinationPortRange: '*'
-          sourceAddressPrefix: appGatewaySubnetPrefix
-          destinationAddressPrefix: privateEndpointsSubnetPrefix
-          access: 'Allow'
-          priority: 100
-          direction: 'Outbound'
-        }
-      }
-      {
-        name: 'AppPlan.Out.Allow.AzureMonitor'
-        properties: {
-          description: 'Allow outbound traffic from the App Gateway subnet to Azure Monitor'
-          protocol: '*'
-          sourcePortRange: '*'
-          destinationPortRange: '*'
-          sourceAddressPrefix: appGatewaySubnetPrefix
-          destinationAddressPrefix: 'AzureMonitor'
-          access: 'Allow'
-          priority: 110
-          direction: 'Outbound'
-        }
-      }
     ]
   }
 }
@@ -214,6 +161,20 @@ resource appServiceSubnetNsg 'Microsoft.Network/networkSecurityGroups@2022-11-01
   location: location
   properties: {
     securityRules: [
+      {
+        name: 'DenyVnetInBound'
+        properties: {
+          description: 'Deny inbound traffic from other subnets to the training subnet. Note: adjust rules as needed after adding resources to the subnet.'
+          protocol: '*'
+          sourcePortRange: '*'
+          destinationPortRange: '*'
+          sourceAddressPrefix: 'VirtualNetwork'
+          destinationAddressPrefix: 'VirtualNetwork'
+          access: 'Deny'
+          priority: 1000
+          direction: 'Inbound'
+        }
+      }
       {
         name: 'AppPlan.Out.Allow.PrivateEndpoints'
         properties: {
@@ -229,19 +190,34 @@ resource appServiceSubnetNsg 'Microsoft.Network/networkSecurityGroups@2022-11-01
         }
       }
       {
-        name: 'AppPlan.Out.Allow.AzureMonitor'
+        name: 'AppPlan.Out.Allow.HTTPsInternet'
         properties: {
-          description: 'Allow outbound traffic from App service to the AzureMonitor ServiceTag.'
+          description: 'Allow outbound traffic from the app service subnet to the Internet over HTTPs.'
           protocol: '*'
           sourcePortRange: '*'
           destinationPortRange: '*'
           sourceAddressPrefix: appServicesSubnetPrefix
-          destinationAddressPrefix: 'AzureMonitor'
+          destinationAddressPrefix: 'Internet'
           access: 'Allow'
-          priority: 110
+          priority: 500
           direction: 'Outbound'
         }
       }
+      {
+        name: 'DenyAllOutBound'
+        properties: {
+          description: 'Deny outbound traffic from the app services (vnet integration) subnet. Note: adjust rules as needed after adding resources to the subnet'
+          protocol: '*'
+          sourcePortRange: '*'
+          destinationPortRange: '*'
+          sourceAddressPrefix: appServicesSubnetPrefix
+          destinationAddressPrefix: '*'
+          access: 'Deny'
+          priority: 1000
+          direction: 'Outbound'
+        }
+      }
+      
     ]
   }
 }
@@ -252,6 +228,48 @@ resource privateEndpointsSubnetNsg 'Microsoft.Network/networkSecurityGroups@2022
   location: location
   properties: {
     securityRules: [
+      {
+        name: 'PrivateEndpoints.In.Allow.AppGateway'
+        properties: {
+          description: 'Allow inbound from the Application Gateway Subnet'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '443'
+          sourceAddressPrefix: appServicesSubnetPrefix
+          destinationAddressPrefix: 'VirtualNetwork'
+          access: 'Allow'
+          priority: 100
+          direction: 'Inbound'
+        }
+      }
+      {
+        name: 'PrivateEndpoints.In.Allow.AppServicesPlan'
+        properties: {
+          description: 'Allow inbound from the App Services Plan Integration subnet'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '443'
+          sourceAddressPrefix: appServicesSubnetPrefix
+          destinationAddressPrefix: 'VirtualNetwork'
+          access: 'Allow'
+          priority: 120
+          direction: 'Inbound'
+        }
+      }
+      {
+        name: 'PrivateEndpoints.In.Allow.AzureFirewall'
+        properties: {
+          description: 'Allow inbound from the AzureFirewallSubnet'
+          protocol: 'Tcp'
+          sourcePortRange: '*'
+          destinationPortRange: '443'
+          sourceAddressPrefix: azureFirewallSubnetPrefix
+          destinationAddressPrefix: 'VirtualNetwork'
+          access: 'Allow'
+          priority: 130
+          direction: 'Inbound'
+        }
+      }
       {
         name: 'PE.Out.Deny.All'
         properties: {
@@ -276,6 +294,20 @@ resource agentsSubnetNsg 'Microsoft.Network/networkSecurityGroups@2022-11-01' = 
   location: location
   properties: {
     securityRules: [
+      {
+        name: 'DenyVnetInBound'
+        properties: {
+          description: 'Deny inbound traffic from other subnets to the training subnet. Note: adjust rules as needed after adding resources to the subnet.'
+          protocol: '*'
+          sourcePortRange: '*'
+          destinationPortRange: '*'
+          sourceAddressPrefix: 'VirtualNetwork'
+          destinationAddressPrefix: 'VirtualNetwork'
+          access: 'Deny'
+          priority: 100
+          direction: 'Inbound'
+        }
+      }
       {
         name: 'DenyAllOutBound'
         properties: {
