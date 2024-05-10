@@ -1,3 +1,4 @@
+
 # App Services Baseline Architecture
 
 This repository contains the Bicep code to deploy an Azure App Services baseline architecture with zonal redundancy. For more information on this architecture, see the guidance in the [Azure Architecture Center](https://learn.microsoft.com/en-us/azure/architecture/web-apps/app-service/architectures/baseline-zone-redundant).
