@@ -1,51 +1,45 @@
 // Azure Firewall 
 var azfwName = 'azfw-hub'
-var azfwPolicyName = 'azfw-hub-policy-test'
+var azfwPolicyName = 'azfw-hub-policy'
 param location string
 var appGWRuleName = 'azfw-ip-group-app-gwsnet'
-var appRulesName = 'snet-appGateway-to-frontend-app-aoaizt'
 var azfwPIPName = 'azfw-pip'
+
+
+var jumpboxRulesName = 'jumpboxzt-to-Internet'
+
 
 // Deployment Names
 var ipGroupAppGWSnetDeploymentName = 'ipgr-snet-appGateway-deployment'
-var ipGroupInboundFESnetDeploymentName = 'ipgr-ib-frontend-app-aoaizt-deployment'
-var ipGroupOutboundFESnetDeploymentName = 'ipgr-ob-frontend-app-aoaizt-deployment'
-var ipGroupBackendDeploymentName = 'ipgr-backend-app-aoaizt-deployment'
+var ipGroupInboundFESnetDeploymentName = 'ipgr-ib-frontend-appzt-deployment'
+var ipGroupOutboundFESnetDeploymentName = 'ipgr-ob-frontend-appzt-deployment'
+var ipGroupBackendDeploymentName = 'ipgr-backend-appzt-deployment'
 var ipGroupJumpBoxDeploymentName = 'ipgr-snet-jumpbox-deployment'
 var azfwPolicyDeploymentName = 'azfw-hub-policy-deployment'
 var azfwPIPDeploymentName = 'azfw-pip-deployment'
+var azfwDeploymentName = 'azfw-hub-deployment'
 
 // Name of the IP Groups
 var ipGroupAppGWSnetName = 'ipgr-snet-appGateway'
-var ipGroupInboundFESnetName = 'ipgr-ib-frontend-app-aoaizt'
-var ipGroupOutboundFESnetName = 'ipgr-ob-frontend-app-aoaizt'
-var ipGroupBackendName = 'ipgr-backend-app-aoaizt'
-var ipGroupJumpBoxName = 'ipgr-snet-jumpbox'
+var ipGroupInboundFESnetName = 'ipgr-ib-frontend-appzt'
+var ipGroupOutboundFESnetName = 'ipgr-ob-frontend-appzt'
+var ipGroupBackendName = 'ipgr-backend-appzt'
 
 // Rule Collections
-var appRuleCollectionGroupName = 'apprule-cg-app-aoaizt'
-//var netRuleCollectionName = 'netrule-cg-app-aoaizt'
-var appOBRuleName = 'frontend-app-aoaizt-to-Internet'
-var appIBRuleCollectionName = 'ib-net-appaoaizt'
-var appOBRuleCollectionName = 'ob-app-rc-appaoaizt'
-param uaiName string
-var keyVaultCASecretName = 'CACert'
-param keyVaultName string
-param logAnalyticsWorkspaceId string
+var appRuleCollectionGroupName = 'apprule-cg-appzt'
+var appIBRuleCollectionName = 'ib-app-rc-appzt'
+var appOBRuleCollectionName = 'ob-app-rc-appzt'
+var appIBRuleName = 'snet-appGateway-to-frontend-appzt'
+var appOBRuleName = 'frontend-appzt-to-Internet'
 
-// Key Vault & Identity reference for TLS
+param logAnalyticsWorkspaceName string
 
-resource fwKeyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
-  name: keyVaultName
-}
 
-resource tlsIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
-  name: uaiName
-}
 
-resource kvSecretCert 'Microsoft.KeyVault/vaults/secrets@2019-09-01' existing = {
-  parent: fwKeyVault
-  name: keyVaultCASecretName
+// LA Workspace reference
+
+resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
+  name: logAnalyticsWorkspaceName
 }
 
 // IP Groups
@@ -53,7 +47,7 @@ module ipGroupAppGWSnet 'br/public:avm/res/network/ip-group:0.1.0' = {
   name: ipGroupAppGWSnetDeploymentName
   params: {
     name: ipGroupAppGWSnetName
-    ipAddresses: [ '10.1.1.0/24']
+    ipAddresses: ['10.0.1.0/24']
     location: location
   }
 }
@@ -62,7 +56,7 @@ module ipGroupInboundFESnet 'br/public:avm/res/network/ip-group:0.1.0' = {
   name: ipGroupInboundFESnetDeploymentName
   params: {
     name: ipGroupInboundFESnetName
-    ipAddresses: ['10.1.0.128/32']
+    ipAddresses: ['10.0.2.7/32']
     location: location
   }
 }
@@ -71,25 +65,7 @@ module ipGroupOutboundFESnet 'br/public:avm/res/network/ip-group:0.1.0' = {
   name: ipGroupOutboundFESnetDeploymentName
   params: {
     name: ipGroupOutboundFESnetName
-    ipAddresses: ['10.1.0.0/24']
-    location: location
-  }
-}
-
-module ipGroupBackend 'br/public:avm/res/network/ip-group:0.1.0' = {
-  name: ipGroupBackendDeploymentName
-  params: {
-    name: ipGroupBackendName
-    ipAddresses: ['10.1.1.7/32', '10.1.1.5/32' ]
-    location: location
-  }
-}
-
-module ipGroupJumpBox 'br/public:avm/res/network/ip-group:0.1.0' = {
-  name: ipGroupJumpBoxDeploymentName
-  params: {
-    name: ipGroupJumpBoxName
-    ipAddresses: ['10.1.1.192/28']
+    ipAddresses: ['10.0.0.0/24']
     location: location
   }
 }
@@ -117,8 +93,8 @@ module firewallPolicy 'br/public:avm/res/network/firewall-policy:0.1.2' = {
                 terminateTLS: true
                 destinationAddresses: []
                 targetFqdns: [
-                  'app-aoaiztwk.azurewebsites.net'
-                  'app-aoaiztwk.scm.azurewebsites.net'
+                  'app-appwrkl.azurewebsites.net'
+                  'app-appwrkl.scm.azurewebsites.net'
                 ]
                 destinationIpGroups: []
                 protocols: [
@@ -127,7 +103,7 @@ module firewallPolicy 'br/public:avm/res/network/firewall-policy:0.1.2' = {
                     port: 443
                   }
                 ]
-                name: appRulesName
+                name: appIBRuleName
                 ruleType: 'ApplicationRule'
                 sourceAddresses: []
                 sourceIpGroups: [ipGroupAppGWSnet.outputs.resourceId]
@@ -148,6 +124,7 @@ module firewallPolicy 'br/public:avm/res/network/firewall-policy:0.1.2' = {
                 targetFqdns: [
                   'dc.services.visualstudio.com'
                   'mcr.microsoft.com'
+                  '${location}.data.mcr.microsoft.com'
                 ]
                 destinationIpGroups: []
                 protocols: [
@@ -169,12 +146,7 @@ module firewallPolicy 'br/public:avm/res/network/firewall-policy:0.1.2' = {
     threatIntelMode: 'Alert'
     tier: 'Premium'
     mode: 'Alert'
-    certificateName: keyVaultCASecretName
-    keyVaultSecretId: kvSecretCert.properties.secretUriWithVersion
-    managedIdentities:{
-      userAssignedResourceIds: [tlsIdentity.id]
-    }
-    defaultWorkspaceId: logAnalyticsWorkspaceId
+    defaultWorkspaceId: logAnalyticsWorkspace.id
    }
   }
 
@@ -185,60 +157,48 @@ module azfwPIP 'br/public:avm/res/network/public-ip-address:0.3.1' = {
   params: {
     name: azfwPIPName
     location: location
-  }
-}
-
-// Azure Firewall
-resource azureFirewall 'Microsoft.Network/azureFirewalls@2023-04-01' = {
-  name: azfwName
-  location: location
-  properties: {
-      ipConfigurations: [
-          {
-              name: 'azfwConfig'
-              properties: {
-                  subnet: {
-                      id: resourceId('Microsoft.Network/virtualNetworks/subnets', 'vnet-hub', 'AzureFirewallSubnet')
-                  }
-                  publicIPAddress: {
-                      id: azfwPIP.outputs.resourceId
-                  }
-              }
-          }
-      ]
-      sku: {
-        tier: 'Premium'
-      }
-   
-        firewallPolicy: {
-          id: firewallPolicy.outputs.resourceId
-        }
-      }
-      dependsOn:[
-        firewallPolicy
-      ]
-  }
-
-
-
-//Firewall diagnostic settings
-resource fwDiagSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
-  name: '${azureFirewall.name}-diagnosticSettings'
-  scope: azureFirewall
-  properties: {
-    workspaceId: logAnalyticsWorkspaceId
-    logs: [
-        {
-            categoryGroup: 'allLogs'
-            enabled: true
-            retentionPolicy: {
-                enabled: false
-                days: 7
-            }
-        }
+    skuName: 'Standard'
+    skuTier: 'Regional'
+    zones: [
+      1
+      2
+      3
     ]
   }
 }
 
-output fwPrivateIP string = azureFirewall.properties.ipConfigurations[0].properties.privateIPAddress
 output azfwPIPAddress string = azfwPIP.outputs.ipAddress
+
+// Azure Firewall
+module azureFirewall 'br/public:avm/res/network/azure-firewall:0.2.0' = {
+    name: azfwDeploymentName
+    params: {
+      name: azfwName
+      azureSkuTier: 'Premium'
+      location: location
+      publicIPResourceID: azfwPIP.outputs.resourceId
+      firewallPolicyId: firewallPolicy.outputs.resourceId
+      virtualNetworkResourceId: resourceId('Microsoft.Network/virtualNetworks', 'vnet-hub')
+      diagnosticSettings: [
+        {
+          name: 'azfw-diagnosticSettings'
+          workspaceResourceId: logAnalyticsWorkspace.id
+          metricCategories: [
+            {
+              category: 'AllMetrics'
+            }
+          ]
+          logCategoriesAndGroups:[
+            {
+              categoryGroup: 'allLogs'
+            }
+          ]
+        }
+      ]
+    }
+    dependsOn:[
+      firewallPolicy
+    ]
+  }
+
+output fwPrivateIP string = azureFirewall.outputs.privateIp
