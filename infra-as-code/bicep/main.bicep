@@ -29,13 +29,15 @@ param publishFileName string = 'SimpleWebApp.zip'
 // ---- Availability Zones ----
 var availabilityZones = [ '1', '2', '3' ]
 var logWorkspaceName = 'log-${baseName}'
-
+param firewallCIDR string = '10.1.0.0/26'
 
 @description('Specifies the password of the administrator account on the Windows jump box.\n\nComplexity requirements: 3 out of 4 conditions below need to be fulfilled:\n- Has lower characters\n- Has upper characters\n- Has a digit\n- Has a special character\n\nDisallowed values: "abc@123", "P@$$w0rd", "P@ssw0rd", "P@ssword123", "Pa$$word", "pass@word1", "Password!", "Password1", "Password22", "iloveyou!"')
 @secure()
 @minLength(8)
 @maxLength(123)
 param jumpBoxAdminPassword string
+
+param fwPrivateIP string
 
 // ---- Log Analytics workspace ----
 resource logWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
@@ -56,6 +58,8 @@ module networkModule 'network.bicep' = {
     location: location
     baseName: baseName
     developmentEnvironment: developmentEnvironment
+    azfwPrefix:firewallCIDR
+    fwPrivateIP: fwPrivateIP
   }
 }
 
@@ -101,22 +105,8 @@ module secretsModule 'secrets.bicep' = {
 module hubNetworkModule 'hubnetwork.bicep' = {
   name: 'hubVnetDeploy'
   params: {
-    fwAddressPrefix:'10.1.0.0/26'
+    fwAddressPrefix: firewallCIDR
     location: location
-  }
-}
-
-// Deploy TLS Inspection elements for the Azure Firewall
-module tlsModule 'tls.bicep' = {
-  name: 'tlsDeploy'
-  params: {
-    location: location
-    vnetRef: hubNetworkModule.outputs.vnetId
-    peSubnetId: hubNetworkModule.outputs.peSubnetId
-    workloadSubnetId:hubNetworkModule.outputs.workloadSubnetId
-    keyVaultName: 'azfwkv-${baseName}'
-    remoteAccessPassword: jumpBoxAdminPassword  
-    logAnalyticsWorkspaceId:logWorkspace.id
   }
 }
 
@@ -126,21 +116,7 @@ module firewallModule 'azurefirewall.bicep' = {
   name: 'firewallDeploy'
   params: {
     location: location
-    keyVaultName: 'azfwkv-${baseName}'
-    uaiName: tlsModule.outputs.kvUAIName
-    logAnalyticsWorkspaceId:logWorkspace.id
-  }
-}
-
-
-// Deploy Routes for the Azure Firewall
-
-module routesModule 'routes.bicep' = {
-  name: 'routesDeploy'
-  params: {
-    location: location
-    fwPrivateIP: firewallModule.outputs.fwPrivateIP
-    azfwPrefix: hubNetworkModule.outputs.azfwPrefix
+    logAnalyticsWorkspaceName:logWorkspace.name
   }
 }
 

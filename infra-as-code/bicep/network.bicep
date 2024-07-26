@@ -21,7 +21,17 @@ var privateEndpointsSubnetPrefix = '10.0.2.0/27'
 var agentsSubnetPrefix = '10.0.2.32/27'
 var azureFirewallSubnetPrefix = '10.1.1.0/26'
 
+var rtDeploymentAppGWName = 'udr-appGatewaySubnet-deployment'
+var rtDeploymentAppServicesName = 'udr-appServicesSubnet-deployment'
+var rtDeploymentAgentsName = 'udr-agentsSubnet-deployment'
+var rtDeploymentPEName = 'udr-privateEndpointsSubnet-deployment'
 
+var rtAppGWName = 'udr-appGatewaySubnet'
+var rtAppServicesName = 'udr-appServicesSubnet'
+var rtAgentsName = 'udr-agentsSubnet'
+var rtPEName = 'udr-privateEndpointsSubnet'
+param fwPrivateIP string
+param azfwPrefix string
 //Temp disable DDoS protection
 var enableDdosProtection = !developmentEnvironment
 
@@ -33,6 +43,88 @@ resource ddosProtectionPlan 'Microsoft.Network/ddosProtectionPlans@2022-11-01' =
   location: location
   properties: {}
 }
+
+//route tables
+module rtAppGW 'br/public:avm/res/network/route-table:0.2.1' = {
+  name: rtDeploymentAppGWName
+  params: {
+    name: rtAppGWName
+    location: location
+    routes: [
+      {
+        name: 'ib-frontend-app-aoaizt'
+        properties: {
+          addressPrefix: '10.0.2.14/32' //change to the right IP
+          nextHopIpAddress: fwPrivateIP
+          nextHopType: 'VirtualAppliance'
+        }
+      }
+    ]
+  } //appgw subnet association - do in vnet one
+}
+
+module rtAppServices 'br/public:avm/res/network/route-table:0.2.1' = {
+  name: rtDeploymentAppServicesName
+  params: {
+    name: rtAppServicesName
+    location: location
+    routes: [
+      {
+        name: 'default'
+        properties: {
+          addressPrefix: '0.0.0.0/0'
+          nextHopIpAddress: fwPrivateIP
+          nextHopType: 'VirtualAppliance'
+        }
+      }
+    ]
+  }
+}
+
+module rtAgents 'br/public:avm/res/network/route-table:0.2.1' = {
+  name: rtDeploymentAgentsName
+  params: {
+    name: rtAgentsName
+    location: location
+    routes: [
+      {
+        name: 'default'
+        properties: {
+          addressPrefix: '0.0.0.0/0'
+          nextHopIpAddress: fwPrivateIP
+          nextHopType: 'VirtualAppliance'
+        }
+      }
+    ]
+  }
+}
+
+module rtPE 'br/public:avm/res/network/route-table:0.2.1' = {
+  name: rtDeploymentPEName
+  params: {
+    name: rtPEName
+    location: location
+    routes: [
+      {
+        name: 'default'
+        properties: {
+          addressPrefix: '0.0.0.0/0'
+          nextHopIpAddress: fwPrivateIP
+          nextHopType: 'VirtualAppliance'
+        }
+      }
+      {
+        name: 'AzureFirewallSubnetRoute'
+        properties: {
+          addressPrefix: azfwPrefix
+          nextHopIpAddress: fwPrivateIP
+          nextHopType: 'VirtualAppliance'
+        }
+      }
+    ]
+  }
+}
+
 
 //vnet and subnets
 resource vnet 'Microsoft.Network/virtualNetworks@2022-11-01' = {
@@ -55,6 +147,9 @@ resource vnet 'Microsoft.Network/virtualNetworks@2022-11-01' = {
           networkSecurityGroup: {
             id: appServiceSubnetNsg.id
           }
+          routeTable: {
+            id: rtAppServices.outputs.resourceId
+          }
           delegations: [
             {
               name: 'delegation'
@@ -73,6 +168,9 @@ resource vnet 'Microsoft.Network/virtualNetworks@2022-11-01' = {
           networkSecurityGroup: {
             id: appGatewaySubnetNsg.id
           }
+          routeTable: {
+            id: rtAppGW.outputs.resourceId
+          }
           privateEndpointNetworkPolicies: 'Enabled'
           privateLinkServiceNetworkPolicies: 'Enabled'
         }
@@ -85,6 +183,9 @@ resource vnet 'Microsoft.Network/virtualNetworks@2022-11-01' = {
           networkSecurityGroup: {
             id: privateEndpointsSubnetNsg.id
           }
+          routeTable: {
+            id: rtPE.outputs.resourceId
+          }
         }
       }
       {
@@ -94,6 +195,9 @@ resource vnet 'Microsoft.Network/virtualNetworks@2022-11-01' = {
           addressPrefix: agentsSubnetPrefix
           networkSecurityGroup: {
             id: agentsSubnetNsg.id
+          }
+          routeTable: {
+            id: rtAgents.outputs.resourceId
           }
         }
       }
